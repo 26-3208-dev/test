@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
 st.set_page_config(page_title="문화재 훼손 예측")
 
@@ -10,35 +9,40 @@ st.divider()
 # 데이터 불러오기
 df = pd.read_csv("data/yc_heritage_detail_enriched.csv")
 
-# 데이터 표시
+# 원본 데이터
 st.subheader("원본 데이터")
 st.dataframe(df)
 
-# 국가유산종목별 개수 집계
-heritage_count = (
-    df["국가유산종목"]
-    .value_counts()
-    .reset_index()
-)
+# 컬럼 확인
+st.subheader("데이터 컬럼")
+st.write(df.columns.tolist())
 
-heritage_count.columns = ["국가유산종목", "건수"]
+# 국가유산종목별 시각화
+if "국가유산종목" in df.columns:
 
-# 시각화
-st.subheader("국가유산종목별 분포")
+    st.subheader("국가유산종목별 분포")
 
-fig = px.bar(
-    heritage_count,
-    x="국가유산종목",
-    y="건수",
-    color="건수",
-    text="건수",
-    title="국가유산종목별 문화재 수"
-)
+    heritage_count = (
+        df["국가유산종목"]
+        .value_counts()
+        .reset_index()
+    )
 
-fig.update_layout(
-    xaxis_title="국가유산종목",
-    yaxis_title="건수",
-    xaxis_tickangle=-45
-)
+    heritage_count.columns = ["국가유산종목", "건수"]
 
-st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(heritage_count)
+
+    # 막대그래프
+    st.bar_chart(
+        heritage_count.set_index("국가유산종목")
+    )
+
+    # 원형 차트용 데이터
+    st.subheader("종목별 비율")
+
+    st.dataframe(
+        heritage_count.style.format({"건수": "{:,}"})
+    )
+
+else:
+    st.error("'국가유산종목' 컬럼을 찾을 수 없습니다.")
