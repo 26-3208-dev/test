@@ -1,29 +1,73 @@
+```python
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 
 st.set_page_config(
-    page_title="실시간 문화재 위험도 분석",
+    page_title="AI 문화재 위험도 예측",
     layout="wide"
 )
 
-st.title("실시간 문화재 훼손 위험도 분석 시스템")
+st.title("AI 기반 문화재 훼손 위험도 예측")
 st.divider()
 
 # =========================
-# CSV 데이터 불러오기
+# 데이터 불러오기
 # =========================
+
 df = pd.read_csv("data/yc_heritage_detail_enriched.csv")
 
+st.subheader("원본 데이터")
+st.dataframe(df)
+
 # =========================
-# 실시간 환경 데이터 수집
-# OpenWeather API 사용
+# 예시 학습 데이터 생성
+# 실제론 과거 센서 데이터 사용
 # =========================
 
-API_KEY = "여기에_본인_API_KEY_입력"
+# 예시:
+# 온도 / 습도 / 풍속 -> 실제 훼손 점수
 
-# 예시 지역 (안동)
+train_df = pd.DataFrame({
+
+    "temp": [10, 15, 20, 25, 30, 35],
+    "humidity": [30, 40, 50, 60, 70, 90],
+    "wind": [1, 2, 3, 5, 7, 10],
+
+    # 실제 과거 훼손도
+    "damage_score": [10, 15, 20, 40, 70, 95]
+})
+
+# =========================
+# 머신러닝 학습
+# =========================
+
+X = train_df[["temp", "humidity", "wind"]]
+y = train_df["damage_score"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
+)
+
+model = RandomForestRegressor(
+    n_estimators=100,
+    random_state=42
+)
+
+model.fit(X_train, y_train)
+
+# =========================
+# 실시간 날씨 데이터 가져오기
+# =========================
+
+API_KEY = "여기에_API_KEY"
+
 CITY = "Andong"
 
 url = f"""
@@ -32,147 +76,57 @@ https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={API_KEY}&units=m
 
 response = requests.get(url)
 
-# API 성공 시
 if response.status_code == 200:
 
-    weather_data = response.json()
+    weather = response.json()
 
-    temp = weather_data["main"]["temp"]
-    humidity = weather_data["main"]["humidity"]
-    wind = weather_data["wind"]["speed"]
-    weather = weather_data["weather"][0]["description"]
+    temp = weather["main"]["temp"]
+    humidity = weather["main"]["humidity"]
+    wind = weather["wind"]["speed"]
 
     st.subheader("실시간 환경 데이터")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     col1.metric("온도", f"{temp}°C")
     col2.metric("습도", f"{humidity}%")
     col3.metric("풍속", f"{wind}m/s")
-    col4.metric("날씨", weather)
 
-else:
-    st.error("실시간 날씨 데이터를 가져오지 못했습니다.")
+    # =========================
+    # AI 예측
+    # =========================
 
-# =========================
-# 실시간 위험도 계산
-# =========================
+    input_data = pd.DataFrame({
+        "temp": [temp],
+        "humidity": [humidity],
+        "wind": [wind]
+    })
 
-def calculate_realtime_risk(row):
+    predicted_risk = model.predict(input_data)[0]
 
-    score = 0
+    predicted_risk = round(predicted_risk, 1)
 
-    # -------------------------
-    # 온도 영향
-    # -------------------------
-    if temp >= 35:
-        score += 30
+    st.subheader("AI 위험도 예측")
 
-    elif temp >= 30:
-        score += 20
+    if predicted_risk >= 80:
 
-    # -------------------------
-    # 습도 영향
-    # -------------------------
-    if humidity >= 80:
-        score += 30
+        st.error(
+            f"현재 환경은 문화재 훼손 위험이 매우 높습니다. (예측 위험도: {predicted_risk})"
+        )
 
-    elif humidity >= 60:
-        score += 15
+    elif predicted_risk >= 50:
 
-    # -------------------------
-    # 풍속 영향
-    # -------------------------
-    if wind >= 10:
-        score += 20
-
-    elif wind >= 5:
-        score += 10
-
-    # -------------------------
-    # 문화재 재질 영향
-    # -------------------------
-    if "재질" in row.index:
-
-        material = str(row["재질"])
-
-        if "목조" in material:
-            score += 20
-
-        elif "석조" in material:
-            score += 10
-
-    return score
-
-# 위험도 계산
-df["실시간위험점수"] = df.apply(calculate_realtime_risk, axis=1)
-
-# 위험등급 분류
-def classify(score):
-
-    if score >= 70:
-        return "매우 위험"
-
-    elif score >= 40:
-        return "위험"
-
-    elif score >= 20:
-        return "주의"
+        st.warning(
+            f"현재 문화재 훼손 위험이 높습니다. (예측 위험도: {predicted_risk})"
+        )
 
     else:
-        return "양호"
 
-df["위험등급"] = df["실시간위험점수"].apply(classify)
-
-# =========================
-# 현재 상태 요약
-# =========================
-
-avg_risk = round(df["실시간위험점수"].mean(), 1)
-
-st.subheader("현재 문화재 상태")
-
-if avg_risk >= 70:
-    st.error(f"현재 문화재 위험도가 매우 높습니다. (평균 위험점수: {avg_risk})")
-
-elif avg_risk >= 40:
-    st.warning(f"현재 문화재 훼손 위험이 높습니다. (평균 위험점수: {avg_risk})")
+        st.success(
+            f"현재 문화재 상태는 비교적 안정적입니다. (예측 위험도: {predicted_risk})"
+        )
 
 else:
-    st.success(f"현재 문화재 상태는 비교적 안정적입니다. (평균 위험점수: {avg_risk})")
 
-# =========================
-# 위험도 TOP 10
-# =========================
-
-st.subheader("실시간 위험도 TOP 10")
-
-top10 = df.sort_values(
-    by="실시간위험점수",
-    ascending=False
-).head(10)
-
-show_cols = []
-
-for col in [
-    "국가유산명",
-    "국가유산종목",
-    "재질",
-    "실시간위험점수",
-    "위험등급"
-]:
-    if col in top10.columns:
-        show_cols.append(col)
-
-st.dataframe(
-    top10[show_cols],
-    use_container_width=True
-)
-
-# =========================
-# 마지막 업데이트 시간
-# =========================
-
-st.caption(
-    f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-)
+    st.error("실시간 날씨 데이터를 가져오지 못했습니다.")
+```
